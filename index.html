@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>小滑</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Huninn&display=swap" rel="stylesheet">
+<style>
+/* Layout: one phone-width column of paper; crayon outline doodles frame the top and bottom, a single ring carries the countdown.
+   Deliberately single-look (paper + crayon), so every color is set explicitly. */
+:root {
+  --paper: #EFE8DA;
+  --ink: #33384D;
+  --clay: #C0795B;
+  --sky: #7C93B5;
+  --sand: #E6C9A8;
+  --peach: #D9A27E;
+  --moss: #8C9A6C;
+  --card: rgba(255,255,255,0.45);
+  --chip: rgba(255,255,255,0.35);
+  --font: 'Huninn', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; background: var(--paper); color: var(--ink); }
+body { font-family: var(--font); font-weight: 400; font-size: 17px; line-height: 1.5; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px dashed var(--clay); outline-offset: 4px; }
+
+.paper { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.defs { position: absolute; width: 0; height: 0; }
+
+.page {
+  position: relative; z-index: 1;
+  min-height: 100dvh; width: 100%; max-width: 430px; margin: 0 auto;
+  display: flex; flex-direction: column;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 8px;
+}
+.screen { display: flex; flex-direction: column; gap: 20px; padding: 0 10px; }
+.top-art { display: block; width: calc(100% + 20px); margin: 0 -10px; height: auto; }
+
+.kicker { font-size: 15px; }
+h1 { margin: 0; font-size: 34px; line-height: 1.25; font-weight: 400; text-wrap: balance; }
+.head { display: flex; flex-direction: column; gap: 6px; }
+label { font-size: 17px; }
+.field { display: flex; flex-direction: column; gap: 8px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.chip {
+  min-height: 50px; padding: 0 22px; background: var(--chip);
+  border: solid var(--ink); font-size: 18px;
+}
+.chip[aria-checked="true"] { background: var(--sand); }
+.chip.c1 { border-radius: 32px 14px 26px 16px / 14px 32px 16px 26px; border-width: 3px 4px 2px 3px; transform: rotate(-1.4deg); }
+.chip.c2 { border-radius: 16px 30px 14px 28px / 28px 14px 32px 16px; border-width: 4px 2px 3px 4px; transform: rotate(1deg); }
+.chip.c3 { border-radius: 30px 16px 28px 14px / 16px 28px 14px 32px; border-width: 2px 4px 4px 3px; transform: rotate(-0.6deg); }
+
+.text-input {
+  width: 100%; height: 58px; padding: 0 20px; background: var(--card);
+  border: solid var(--ink); border-width: 3px 2px 4px 3px;
+  border-radius: 14px 28px 14px 30px / 28px 14px 30px 16px; transform: rotate(-0.5deg); font-size: 18px;
+}
+.text-input::placeholder { color: rgba(51,56,77,0.5); }
+
+.btn {
+  display: flex; align-items: center; justify-content: center; width: 100%; text-align: center;
+  border: solid var(--ink); background: transparent; text-decoration: none;
+}
+.btn-main {
+  height: 62px; font-size: 20px; background: var(--peach);
+  border-width: 4px 3px 3px 4px; border-radius: 34px 18px 30px 20px / 20px 34px 18px 30px; transform: rotate(-0.8deg);
+}
+.btn-ghost {
+  height: 54px; font-size: 17px; border-width: 3px;
+  border-radius: 26px 22px 28px 20px / 22px 28px 20px 26px;
+}
+.btn-ghost.primary { background: var(--peach); height: 62px; font-size: 20px; }
+.hint { display: flex; flex-direction: column; gap: 4px; font-size: 15px; text-align: center; }
+
+.pills { display: flex; gap: 8px; justify-content: center; padding-top: 28px; }
+.pill {
+  padding: 4px 12px; font-size: 15px; border: 3px solid var(--ink); background: var(--chip);
+}
+.pill:nth-child(1) { border-radius: 22px 16px 24px 18px / 16px 24px 18px 22px; }
+.pill:nth-child(2) { border-radius: 18px 24px 16px 22px / 24px 16px 22px 18px; }
+.pill:nth-child(3) { border-radius: 24px 16px 22px 18px / 18px 22px 16px 24px; }
+.pill:nth-child(4) { border-radius: 16px 22px 24px 18px / 22px 18px 16px 24px; }
+.pill.on { background: var(--sand); }
+
+.ring-wrap { position: relative; width: min(300px, 78vw); aspect-ratio: 1; align-self: center; margin-top: 4px; }
+.ring-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ring-text {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+}
+.time { font-size: min(58px, 15vw); line-height: 1; font-variant-numeric: tabular-nums; }
+.time-label { font-size: 17px; }
+.caption { text-align: center; font-size: 21px; line-height: 1.5; text-wrap: balance; min-height: 3em; }
+
+.caption.tappable { cursor: pointer; }
+.flower {
+  position: fixed; width: 28px; height: 28px; margin: -14px 0 0 -14px; pointer-events: none; z-index: 6;
+  animation: fall var(--dur, 2s) cubic-bezier(.4, .1, .8, .6) forwards;
+}
+@keyframes fall {
+  0% { transform: translate(0, 0) rotate(0deg) scale(.3); opacity: 0; }
+  8% { transform: translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
+  85% { opacity: 1; }
+  100% { transform: translate(var(--dx, 0px), var(--dy, 200px)) rotate(var(--rot, 180deg)) scale(1); opacity: 0; }
+}
+.toast {
+  position: fixed; z-index: 8; left: 50%; transform: translateX(-50%) rotate(-1deg);
+  top: calc(env(safe-area-inset-top, 0px) + 16px); width: max-content; max-width: min(360px, 90vw);
+  padding: 12px 20px; text-align: center; font-size: 17px; background: #FBF6EA;
+  border: solid var(--ink); border-width: 3px 4px 3px 3px; border-radius: 22px 26px 20px 28px / 26px 20px 28px 22px;
+}
+.card {
+  width: 100%; padding: 14px 20px; background: var(--card); border: 3px solid var(--ink);
+  border-radius: 20px 26px 18px 24px / 24px 18px 26px 20px; display: flex; flex-direction: column; gap: 2px;
+}
+.card .small { font-size: 14px; }
+.card .big { font-size: 18px; overflow-wrap: anywhere; }
+.alarm { border-radius: 24px 18px 26px 20px / 18px 26px 20px 24px; gap: 10px; }
+.alarm .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.alarm-btn {
+  min-height: 40px; padding: 0 16px; background: var(--chip); border: 3px solid var(--ink);
+  border-radius: 22px 16px 24px 18px / 16px 24px 18px 22px; font-size: 16px;
+}
+.alarm-btn[aria-pressed="true"] { background: var(--sand); }
+
+.pause-icon {
+  width: 48px; height: 48px; margin-top: 8px; padding: 0; display: flex; align-items: center; justify-content: center;
+  background: var(--chip); border: solid var(--ink); border-width: 3px 4px 3px 3px;
+  border-radius: 28px 22px 26px 20px / 22px 28px 20px 26px; transform: rotate(-2deg);
+}
+.pause-icon:active { background: var(--sand); }
+.credit { text-align: center; font-size: 14px; padding-block: 4px 12px; }
+.credit a { color: var(--ink); text-decoration: underline dashed; text-underline-offset: 4px; }
+.story { padding: 32px 10px 0; text-align: center; }
+.story summary { display: block; list-style: none; cursor: pointer; font-size: 26px; line-height: 1.3; color: #A5603C; }
+.story summary::-webkit-details-marker { display: none; }
+.story summary::after {
+  content: ''; display: inline-block; width: 8px; height: 8px; margin-left: 12px; vertical-align: 6px;
+  border-right: 3px solid currentColor; border-bottom: 3px solid currentColor; transform: rotate(45deg);
+}
+.story[open] summary::after { transform: rotate(225deg); vertical-align: -1px; }
+.story p { margin: 10px 0 0; font-size: 16px; line-height: 1.7; text-wrap: pretty; }
+.story a { color: var(--ink); text-decoration: underline dashed; text-underline-offset: 4px; }
+.done-art { width: 100%; max-width: 240px; align-self: center; height: auto; }
+.done p { margin: 0; font-size: 19px; text-wrap: balance; }
+
+.bottom-art { display: block; width: calc(100% + 20px); margin: auto -10px 0; padding-top: 24px; height: auto; flex-shrink: 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .chip, .pill, .btn, .alarm-btn { transition: background-color .15s ease; }
+}
+body { margin: 0; }
+</style>
+
+</head>
+<body>
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <filter id="paperGrain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="3" seed="4" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.42  0 0 0 0 0.34  0 0 0 0 0.24  1.1 0 0 0 -0.38"/>
+    </filter>
+    <filter id="blotch" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="2" seed="9" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0.62  0 0 0 0 0.52  0 0 0 0 0.38  1.4 0 0 0 -0.55"/>
+    </filter>
+    <filter id="crayon" x="-8%" y="-8%" width="116%" height="116%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="2" result="w"/>
+      <feDisplacementMap in="SourceGraphic" in2="w" scale="6" xChannelSelector="R" yChannelSelector="G" result="d"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="7" result="g"/>
+      <feColorMatrix in="g" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  4.2 0 0 0 -1.35" result="m"/>
+      <feComposite in="d" in2="m" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+
+<svg class="paper" aria-hidden="true" focusable="false">
+  <rect width="100%" height="100%" filter="url(#blotch)" opacity="0.3"/>
+  <rect width="100%" height="100%" filter="url(#paperGrain)" opacity="0.5"/>
+</svg>
+
+<main class="page">
+
+  <!-- 設定 -->
+  <section class="screen" id="screen-setup" aria-labelledby="setup-title">
+    <svg class="top-art" viewBox="0 0 390 170" aria-hidden="true" focusable="false">
+      <g filter="url(#crayon)" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M54,156 C40,132 46,104 62,94 L62,76 C62,68 84,68 84,76 L84,94 C102,106 104,134 92,156 Z" fill="#C9D3DE"/>
+        <path d="M60,68 C58,80 57,88 52,94 C38,104 36,132 48,156 C62,160 80,150 94,154" fill="none" stroke="#7C93B5" stroke-width="5"/>
+        <path d="M54,66 C62,60 80,62 83,70 C82,84 85,90 91,96 C106,108 104,136 90,150 C86,157 80,160 74,152" fill="none" stroke="#7C93B5" stroke-width="4"/>
+        <path d="M50,74 C60,70 76,72 86,76" fill="none" stroke="#7C93B5" stroke-width="3"/>
+        <path d="M93,108 C116,98 122,126 100,134 C96,136 94,130 91,133" fill="none" stroke="#7C93B5" stroke-width="5"/>
+        <path d="M69,64 C66,44 74,24 92,10" fill="none" stroke="#7F8F5F" stroke-width="4"/>
+        <path d="M76,40 C88,28 100,30 102,36 C94,44 84,46 76,40Z" fill="#9AA67C"/>
+        <path d="M70,30 C60,20 52,24 50,30 C58,38 68,36 70,30Z" fill="#9AA67C"/>
+        <path d="M88,18 C96,8 108,8 112,12 C106,22 96,24 88,18Z" fill="#9AA67C"/>
+        <g transform="translate(-20,0)">
+          <path d="M302,72 C300,104 304,130 318,136 C336,142 354,136 360,124 C366,108 364,86 362,72 Z" fill="#E6C9A8"/>
+          <path d="M298,66 C300,98 302,128 316,134 C334,140 352,136 359,122 C364,104 362,84 360,66" fill="none" stroke="#C0795B" stroke-width="5"/>
+          <path d="M294,68 C310,62 340,64 364,68" fill="none" stroke="#C0795B" stroke-width="5"/>
+          <path d="M298,76 C316,72 340,74 360,74" fill="none" stroke="#C0795B" stroke-width="3"/>
+          <path d="M362,86 C388,80 390,118 360,122" fill="none" stroke="#C0795B" stroke-width="5"/>
+          <path d="M284,148 C312,154 352,154 380,146" fill="none" stroke="#B8AA7A" stroke-width="5"/>
+          <path d="M318,52 C308,42 324,34 314,24 C310,18 316,12 318,10" fill="none" stroke="#7C93B5" stroke-width="4"/>
+          <path d="M340,52 C332,42 346,34 338,26" fill="none" stroke="#7C93B5" stroke-width="4"/>
+        </g>
+      </g>
+    </svg>
+
+    <div class="head">
+      <div class="kicker">進入專注之前 · 第 1 步</div>
+      <h1 id="setup-title">這次想專注多久？</h1>
+    </div>
+
+    <div class="chips" role="radiogroup" aria-label="專注時間">
+      <button type="button" class="chip c1" role="radio" aria-checked="true" data-min="25">25 分</button>
+      <button type="button" class="chip c2" role="radio" aria-checked="false" data-min="50">50 分</button>
+      <button type="button" class="chip c3" role="radio" aria-checked="false" data-min="75">75 分</button>
+    </div>
+
+    <div class="field">
+      <label for="task">這段時間，要做什麼？</label>
+      <input id="task" class="text-input" type="text" maxlength="60" placeholder="例如：寫完這週的電子報" autocomplete="off">
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <button type="button" class="btn btn-main" id="startBtn">開始滑手機</button>
+      <div class="hint"><div>滑手機 5 分 → 整理桌面 3 分 → 冥想 1 分</div><div>最後開始專注！</div></div>
+    </div>
+  </section>
+
+  <!-- 計時（放縱、整理、冥想、專注共用） -->
+  <section class="screen" id="screen-timer" hidden aria-live="off">
+    <div class="pills" aria-hidden="true">
+      <div class="pill" data-p="scroll">放縱</div>
+      <div class="pill" data-p="tidy">整理</div>
+      <div class="pill" data-p="meditate">冥想</div>
+      <div class="pill" data-p="focus">專注</div>
+    </div>
+
+    <div class="ring-wrap">
+      <svg viewBox="0 0 300 300" aria-hidden="true" focusable="false">
+        <g filter="url(#crayon)" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="150" cy="150" r="118" fill="#E6CDAE"/>
+          <circle cx="150" cy="150" r="132" fill="none" stroke="#C0795B" stroke-width="8"/>
+          <circle id="progress" cx="150" cy="150" r="116" fill="none" stroke="#7C93B5" stroke-width="6" pathLength="100" stroke-dasharray="100 100" stroke-dashoffset="0" transform="rotate(-90 150 150)"/>
+        </g>
+      </svg>
+      <div class="ring-text">
+        <div class="time" id="time" role="timer">05:00</div>
+        <div class="time-label" id="timeLabel">放縱時間</div>
+        <button type="button" class="pause-icon" id="pauseBtn" aria-label="暫停" hidden>
+          <svg id="icoPause" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 4.5 C8.5 4 9.5 4.6 9.5 6 L9.7 18 C9.5 19.5 8 19.8 7 19.4 C6 19 6.2 17 6.3 12 Z" fill="#33384D"/><path d="M15.2 4.4 C16.5 4 17.8 4.4 17.8 5.8 L17.6 18.2 C17.4 19.6 16 19.7 15.1 19.3 C14.4 18.9 14.6 16 14.5 11 Z" fill="#33384D"/></svg>
+          <svg id="icoPlay" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" hidden><path d="M7 4.6 C9 5.4 17 10.2 19 12 C17 13.8 9 18.8 7 19.6 C6.4 16 6.6 8 7 4.6 Z" fill="#33384D"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="caption" id="caption" aria-live="polite"></div>
+
+    <div class="card" id="taskCard">
+      <div class="small" id="taskMeta">這次要做 · 25 分鐘</div>
+      <div class="big" id="taskText"></div>
+    </div>
+
+    <div class="card alarm" id="alarmCard">
+      <div class="big">怕滑到忘我？先設一個五分鐘手機鬧鐘！</div>
+      <div class="row">
+        <div class="small" id="alarmTime">鬧鐘響的時間：--:--</div>
+        <button type="button" class="alarm-btn" id="alarmBtn" aria-pressed="false">我設好了</button>
+      </div>
+      <div class="small">離開這個頁面後，網頁可能收不到提醒，設鬧鐘可以避免悲劇。</div>
+    </div>
+
+    <button type="button" class="btn btn-ghost" id="actionBtn">我滑夠了，提前進入下一步</button>
+  </section>
+
+  <!-- 完成 -->
+  <section class="screen done" id="screen-done" hidden>
+    <svg class="done-art" viewBox="0 0 240 150" aria-hidden="true" focusable="false">
+      <g filter="url(#crayon)" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M70,60 C70,100 80,126 120,128 C160,126 170,100 170,60 Z" fill="#E6C9A8"/>
+        <path d="M66,58 C68,100 80,130 120,132 C162,130 174,100 174,58" fill="none" stroke="#C0795B" stroke-width="5"/>
+        <path d="M62,60 C90,54 150,56 178,60" fill="none" stroke="#C0795B" stroke-width="5"/>
+        <path d="M174,72 C206,66 208,108 170,112" fill="none" stroke="#C0795B" stroke-width="5"/>
+        <path d="M100,40 C90,30 106,22 98,12" fill="none" stroke="#7C93B5" stroke-width="4"/>
+        <path d="M132,40 C124,30 138,22 130,12" fill="none" stroke="#7C93B5" stroke-width="4"/>
+        <path d="M40,142 C90,136 160,146 214,138" fill="none" stroke="#B8AA7A" stroke-width="5"/>
+      </g>
+    </svg>
+    <div class="head">
+      <div class="kicker" id="doneKicker">這一輪結束了</div>
+      <h1>辛苦了！</h1>
+    </div>
+    <p id="doneText"></p>
+    <button type="button" class="btn btn-main" id="againBtn">再來一次</button>
+  </section>
+
+  <details class="story" id="story">
+    <summary>小滑的故事</summary>
+    <p>小滑的主人每天都因為花了太多時間在「做正事之前的準備」，天天拖延，天天懊惱。</p>
+    <p>因此把專注前的「小滑儀式感」也放進專注流程裡，希望能讓更多小滑的主人們，也可以順利完成該做的事，天天安心入睡。</p>
+    <p>（我們做得到！）</p>
+    <p><a href="https://forms.gle/3hCoJfqPB8N6QXcm7" target="_blank" rel="noopener">點這裡</a>提供回饋，幫助小滑繼續精進，下次用 2.0 版本回來找你。</p>
+  </details>
+
+  <svg class="bottom-art" viewBox="0 0 390 146" aria-hidden="true" focusable="false">
+    <g filter="url(#crayon)" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16,78 C26,122 120,124 140,78" fill="none" stroke="#C0795B" stroke-width="5"/>
+      <circle cx="64" cy="54" r="20" fill="none" stroke="#C98A6B" stroke-width="5"/>
+      <circle cx="104" cy="60" r="17" fill="none" stroke="#8C9A6C" stroke-width="5"/>
+      <path d="M64,34 C64,26 68,22 76,20" fill="none" stroke="#7F8F5F" stroke-width="4"/>
+      <path d="M0,134 C90,126 180,138 390,128" fill="none" stroke="#B8AA7A" stroke-width="5"/>
+      <path d="M334,8 L334,46 C320,58 318,96 320,120 L362,120 C364,96 360,58 346,46 L346,8 Z" fill="none" stroke="#8C9A6C" stroke-width="5"/>
+    </g>
+  </svg>
+  <footer class="credit">made by <a href="https://www.instagram.com/iam.ehmily/" target="_blank" rel="noopener">欸米粒 Em!ly</a></footer>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function () {
+  'use strict';
+  // 網址加上 #fast 時，分鐘變秒，方便自己測試
+  var FAST = location.hash === '#fast';
+  var UNIT = FAST ? 1 : 60;
+  var BASE_TITLE = '專注儀式';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var PHASES = {
+    scroll:   { sec: 5 * UNIT, label: '放縱時間', cap: '盡情滑吧！\n時間到，我們再開始。', skip: '我滑夠了，提前進入下一步', next: 'tidy',
+                waitCap: '回來了。\n接下來整理桌面 3 分鐘。', waitBtn: '開始整理桌面' },
+    tidy:     { sec: 3 * UNIT, label: '整理桌面', cap: '收好雜物、喝口水，\n把需要的東西拿出來。', skip: '整理好了，提前進入下一步', next: 'meditate' },
+    meditate: { sec: 1 * UNIT, label: '冥想',     cap: '閉上眼睛，\n慢慢吸氣，慢慢吐氣。', skip: '我準備好了，開始專注', next: 'focus' },
+    focus:    { sec: 0,        label: '專注中',   cap: '這段時間，\n只做這一件事。', skip: '結束這次專注', next: 'done' }
+  };
+  // 專注中隨機跳出的鼓勵，點一下可以換一句
+  var FOCUS_LINES = [
+    '手機放遠一點，\n它不會想你的。',
+    '你現在滑的每一則，\n明天都不會記得。',
+    '先做 5 分鐘就好，\n騙自己也是一種本事。',
+    '電子報不會自己寫完，\n但你會。',
+    'Threads 沒有你也很熱鬧，\n放心。',
+    '你連桌面都整理好了，\n沒有理由不行。',
+    '再撐一下，\n等等想怎麼廢都可以。',
+    '大腦：我想滑一下。\n你：不，你不想。',
+    '拖延說今天先休息，\n你說：謝謝，再聯絡。',
+    '做不完，\n也比沒開始強。',
+    '現在沒有人在等你回訊息，\n真的。',
+    '專心的你，\n比滑手機的你帥多了。',
+    '這杯手搖是你應得的，\n但要先做完。',
+    '你不是做不到，\n你只是還在加載中。',
+    '手機不會給你零用錢，\n專心點。'
+  ];
+  function pickFocusLine() {
+    var i;
+    do { i = Math.floor(Math.random() * FOCUS_LINES.length); } while (FOCUS_LINES.length > 1 && i === state.lastLine);
+    state.lastLine = i;
+    state.focusCap = FOCUS_LINES[i];
+  }
+
+  var state = { phase: 'setup', end: 0, total: 0, planned: 25, task: '', waiting: false, ctx: null, lock: null, focusStart: 0, focusEnd: 0, alarmSet: false, lastFill: -1, lastLine: -1, focusCap: '', paused: false, remain: 0 };
+  var timerId = null;
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function fmt(ms) {
+    var s = Math.max(0, Math.ceil(ms / 1000));
+    return pad(Math.floor(s / 60)) + ':' + pad(s % 60);
+  }
+  function clock(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function show(name) {
+    ['setup', 'timer', 'done'].forEach(function (n) { $('screen-' + n).hidden = (n !== name); });
+    $('story').hidden = (name === 'timer');
+    if (name === 'done') $('story').open = true;
+    else if (name === 'setup') $('story').open = false;
+    window.scrollTo(0, 0);
+  }
+
+  /* ---- 聲音、震動、螢幕不熄滅 ---- */
+  function unlockAudio() {
+    try {
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!state.ctx) state.ctx = new AC();
+      if (state.ctx.state === 'suspended') state.ctx.resume();
+    } catch (e) {}
+  }
+  function beep(finalChime) {
+    try {
+      var c = state.ctx;
+      if (c) {
+        if (c.state === 'suspended') c.resume();
+        var freqs = finalChime ? [523, 659, 784, 1047] : [660, 784, 988];
+        freqs.forEach(function (f, i) {
+          var t = c.currentTime + i * 0.35;
+          var o = c.createOscillator(), g = c.createGain();
+          o.type = 'sine'; o.frequency.value = f;
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.exponentialRampToValueAtTime(0.6, t + 0.03);
+          g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+          o.connect(g); g.connect(c.destination);
+          o.start(t); o.stop(t + 0.32);
+        });
+      }
+    } catch (e) {}
+    try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+  }
+  function getLock() {
+    try {
+      if ('wakeLock' in navigator && document.visibilityState === 'visible' && !state.lock) {
+        navigator.wakeLock.request('screen').then(function (l) {
+          state.lock = l;
+          l.addEventListener('release', function () { state.lock = null; });
+        }).catch(function () {});
+      }
+    } catch (e) {}
+  }
+  function dropLock() {
+    try { if (state.lock) { state.lock.release(); state.lock = null; } } catch (e) {}
+  }
+
+  /* ---- 畫面 ---- */
+  function setProgress(remainMs) {
+    var frac = state.total ? 1 - Math.max(0, remainMs) / state.total : 1;
+    var v = Math.round(frac * 200) / 2; // 0.5% 一格，減少重繪
+    if (v === state.lastFill) return;
+    state.lastFill = v;
+    $('progress').setAttribute('stroke-dashoffset', String(v));
+  }
+  function render() {
+    var p = PHASES[state.phase];
+    if (!p) return;
+    var remain = state.waiting ? 0 : (state.paused ? state.remain : state.end - Date.now());
+    $('time').textContent = fmt(remain);
+    setProgress(remain);
+    document.title = (state.waiting ? '時間到了' : (state.paused ? '暫停中 ' : '') + fmt(remain)) + ' · ' + p.label;
+  }
+  function renderPhase() {
+    var p = PHASES[state.phase];
+    var waiting = state.waiting;
+    Array.prototype.forEach.call(document.querySelectorAll('.pill'), function (el) {
+      el.classList.toggle('on', el.getAttribute('data-p') === state.phase);
+    });
+    $('timeLabel').textContent = waiting ? '時間到了！' : (state.paused ? '已暫停' : p.label);
+    $('pauseBtn').hidden = (state.phase === 'scroll' || waiting);
+    $('pauseBtn').setAttribute('aria-label', state.paused ? '繼續' : '暫停');
+    // SVG 元素沒有 hidden 屬性，要用 setAttribute
+    if (state.paused) { $('icoPause').setAttribute('hidden', ''); $('icoPlay').removeAttribute('hidden'); }
+    else { $('icoPlay').setAttribute('hidden', ''); $('icoPause').removeAttribute('hidden'); }
+    $('caption').classList.toggle('tappable', state.phase === 'focus' && !waiting);
+    $('caption').innerHTML = '';
+    (waiting ? p.waitCap : (state.phase === 'focus' && state.focusCap ? state.focusCap : p.cap)).split('\n').forEach(function (line, i) {
+      if (i) $('caption').appendChild(document.createElement('br'));
+      $('caption').appendChild(document.createTextNode(line));
+    });
+    $('actionBtn').textContent = waiting ? p.waitBtn : p.skip;
+    $('actionBtn').classList.toggle('primary', waiting);
+    $('alarmCard').hidden = !(state.phase === 'scroll' && !waiting);
+    $('taskMeta').textContent = '這次要做 · ' + state.planned + ' 分鐘';
+    $('taskText').textContent = state.task;
+    state.lastFill = -1;
+    render();
+  }
+
+  /* ---- 流程 ---- */
+  function go(name) {
+    state.waiting = false;
+    state.paused = false;
+    state.taps = 0;
+    if (name === 'done') return finishAll();
+    state.phase = name;
+    var p = PHASES[name];
+    state.total = (name === 'focus' ? state.planned * UNIT : p.sec) * 1000;
+    state.end = Date.now() + state.total;
+    if (name === 'focus') { state.focusStart = Date.now(); pickFocusLine(); }
+    if (name === 'scroll') {
+      $('alarmTime').textContent = '鬧鐘響的時間：' + clock(state.end + 60000);
+    }
+    show('timer');
+    renderPhase();
+    getLock();
+    startTick();
+  }
+  function startTick() {
+    if (timerId) clearInterval(timerId);
+    timerId = setInterval(tick, 250);
+  }
+  function tick() {
+    if (state.waiting || state.paused || state.phase === 'setup') return;
+    if (state.end - Date.now() <= 0) return phaseEnded();
+    render();
+  }
+  function phaseEnded() {
+    var p = PHASES[state.phase];
+    beep(state.phase === 'focus');
+    if (state.phase === 'scroll') {
+      // 使用者多半不在畫面上，等他回來按一下再繼續
+      state.waiting = true;
+      renderPhase();
+    } else {
+      go(p.next);
+    }
+  }
+  function onAction() {
+    unlockAudio();
+    var p = PHASES[state.phase];
+    go(p.next);
+  }
+  function finishAll() {
+    state.focusEnd = Date.now();
+    var start = state.focusStart || state.focusEnd;
+    var mins = Math.max(1, Math.round((state.focusEnd - start) / (UNIT * 1000)));
+    state.phase = 'done';
+    if (timerId) { clearInterval(timerId); timerId = null; }
+    dropLock();
+    document.title = BASE_TITLE;
+    var unit = FAST ? '秒' : '分鐘';
+    $('doneKicker').textContent = mins >= state.planned ? '計畫的時間都專注完了' : '提早結束，也算數';
+    $('doneText').textContent = '這次專注了 ' + mins + ' ' + unit + (state.task ? '，做的是「' + state.task + '」。' : '。');
+    show('done');
+  }
+  function reset() {
+    state.phase = 'setup'; state.waiting = false; state.alarmSet = false;
+    $('alarmBtn').setAttribute('aria-pressed', 'false');
+    $('alarmBtn').textContent = '我設好了';
+    document.title = BASE_TITLE;
+    show('setup');
+  }
+
+  /* ---- 事件 ---- */
+  Array.prototype.forEach.call(document.querySelectorAll('.chip'), function (btn) {
+    btn.addEventListener('click', function () {
+      state.planned = parseInt(btn.getAttribute('data-min'), 10);
+      Array.prototype.forEach.call(document.querySelectorAll('.chip'), function (b) {
+        b.setAttribute('aria-checked', b === btn ? 'true' : 'false');
+      });
+    });
+  });
+  $('startBtn').addEventListener('click', function () {
+    unlockAudio();
+    state.task = $('task').value.trim() || '專注的事';
+    go('scroll');
+  });
+  $('actionBtn').addEventListener('click', onAction);
+  $('pauseBtn').addEventListener('click', function () {
+    if (state.waiting || state.phase === 'scroll') return;
+    if (state.paused) {
+      state.end = Date.now() + state.remain;
+      state.paused = false;
+    } else {
+      state.remain = Math.max(0, state.end - Date.now());
+      state.paused = true;
+    }
+    renderPhase();
+  });
+  $('againBtn').addEventListener('click', reset);
+  $('caption').addEventListener('click', function () {
+    if (state.phase === 'focus') { pickFocusLine(); renderPhase(); }
+  });
+  $('alarmBtn').addEventListener('click', function () {
+    state.alarmSet = !state.alarmSet;
+    this.setAttribute('aria-pressed', state.alarmSet ? 'true' : 'false');
+    this.textContent = state.alarmSet ? '已設好' : '我設好了';
+  });
+  $('task').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') e.preventDefault();
+  });
+  /* ---- 彩蛋：點背景掉小花 ---- */
+  var PETALS = ['#E6A08A', '#C98A6B', '#9FB3D1', '#D9A27E', '#B7A6C9', '#E8B7A0'];
+  var NAGS = [
+    '好了好了，不要再玩小花了，回去專注！',
+    '還玩？小花都被你點禿了。',
+    '再點下去，你的事不會自己做完喔。',
+    '你這樣跟滑手機有什麼兩樣？'
+  ];
+  var toastTimer = null;
+  var reduceMotion = false;
+  try { reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+  function flowerSvg(color) {
+    var s = '<svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">';
+    for (var a = 0; a < 360; a += 72) {
+      s += '<ellipse cx="12" cy="6.2" rx="3.6" ry="5" fill="' + color + '" stroke="#33384D" stroke-width="0.8" transform="rotate(' + (a + Math.round(Math.random() * 10 - 5)) + ' 12 12)"/>';
+    }
+    s += '<circle cx="12" cy="12" r="3.2" fill="#E8C86A" stroke="#33384D" stroke-width="0.8"/></svg>';
+    return s;
+  }
+  function dropFlowers(x, y) {
+    var n = 3;
+    for (var i = 0; i < n; i++) {
+      var el = document.createElement('div');
+      el.className = 'flower';
+      el.innerHTML = flowerSvg(PETALS[Math.floor(Math.random() * PETALS.length)]);
+      el.style.left = (x + (Math.random() * 40 - 20)) + 'px';
+      el.style.top = y + 'px';
+      var dur = reduceMotion ? 0.6 : 1.6 + Math.random() * 0.9;
+      el.style.setProperty('--dur', dur + 's');
+      el.style.setProperty('--dx', reduceMotion ? '0px' : (Math.random() * 70 - 35) + 'px');
+      el.style.setProperty('--dy', reduceMotion ? '16px' : Math.max(80, window.innerHeight - y + 40) + 'px');
+      el.style.setProperty('--rot', (Math.random() * 360 - 180) + 'deg');
+      el.addEventListener('animationend', function () { if (this.parentNode) this.parentNode.removeChild(this); });
+      document.body.appendChild(el);
+    }
+  }
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.hidden = false;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.hidden = true; }, 3200);
+  }
+  document.addEventListener('click', function (e) {
+    if (state.phase !== 'setup' && state.phase !== 'focus') return;
+    if (e.target.closest && e.target.closest('button, input, label, a, .card, #caption')) return;
+    state.taps = (state.taps || 0) + 1;
+    dropFlowers(e.clientX, e.clientY);
+    if (state.phase === 'focus' && state.taps % 5 === 0) toast(NAGS[(state.taps / 5 - 1) % NAGS.length]);
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') {
+      try { if (state.ctx && state.ctx.state === 'suspended') state.ctx.resume(); } catch (e) {}
+      if (state.phase !== 'setup' && state.phase !== 'done') { getLock(); tick(); }
+    }
+  });
+})();
+</script>
+
+</body>
+</html>
