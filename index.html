@@ -152,6 +152,8 @@ label { font-size: 17px; }
   border-radius: 28px 22px 26px 20px / 22px 28px 20px 26px; transform: rotate(-2deg);
 }
 .pause-icon:active { background: var(--sand); }
+.share { display: flex; flex-direction: column; gap: 12px; }
+.share a { color: var(--ink); }
 .credit { text-align: center; font-size: 14px; padding-block: 4px 12px; }
 .credit a { color: var(--ink); text-decoration: underline dashed; text-underline-offset: 4px; }
 .story { padding: 32px 10px 0; text-align: center; }
@@ -319,6 +321,10 @@ body { margin: 0; }
       <h1>辛苦了！</h1>
     </div>
     <p id="doneText"></p>
+    <div class="share">
+      <button type="button" class="btn btn-ghost" id="shareBtn">傳給其他拖延症患者</button>
+      <a class="btn btn-ghost" id="threadsBtn" href="https://www.threads.net/intent/post?text=%E5%B0%88%E6%B3%A8%E5%89%8D%E5%85%88%E6%BB%91%205%20%E5%88%86%E9%90%98%E6%89%8B%E6%A9%9F%E3%80%81%E6%95%B4%E7%90%86%E6%A1%8C%E9%9D%A2%E3%80%81%E5%86%A5%E6%83%B3%201%20%E5%88%86%E9%90%98%EF%BC%8C%E5%86%8D%E9%96%8B%E5%A7%8B%E5%81%9A%E4%BA%8B%EF%BC%8C%E6%8B%96%E5%BB%B6%E7%97%87%E7%9A%84%E6%88%91%E7%94%A8%E5%B0%8F%E6%BB%91%E5%81%9A%E5%88%B0%E4%BA%86%E3%80%82%E4%BD%A0%E4%B9%9F%E4%BE%86%E8%A9%A6%E8%A9%A6%EF%BC%9A%0Ahttps%3A%2F%2Fmaigohua.ehmily.com%2F" target="_blank" rel="noopener">分享到 Threads</a>
+    </div>
     <button type="button" class="btn btn-main" id="againBtn">再來一次</button>
   </section>
 
@@ -583,6 +589,26 @@ body { margin: 0; }
     renderPhase();
   });
   $('againBtn').addEventListener('click', reset);
+  var SHARE_URL = 'https://maigohua.ehmily.com/';
+  var SHARE_TEXT = '專注前先滑 5 分鐘手機、整理桌面、冥想 1 分鐘，再開始做事，拖延症的我用小滑做到了。你也來試試：';
+  function copyLink() {
+    try {
+      navigator.clipboard.writeText(SHARE_TEXT + '\n' + SHARE_URL).then(
+        function () { toast('已複製連結，貼給朋友吧'); },
+        function () { toast(SHARE_URL); }
+      );
+    } catch (e) { toast(SHARE_URL); }
+  }
+  $('shareBtn').addEventListener('click', function () {
+    if (navigator.share) {
+      navigator.share({ title: '小滑', text: SHARE_TEXT, url: SHARE_URL }).catch(function (err) {
+        if (err && err.name === 'AbortError') return;
+        copyLink();
+      });
+    } else {
+      copyLink();
+    }
+  });
   $('caption').addEventListener('click', function () {
     if (state.phase === 'focus') { pickFocusLine(); renderPhase(); }
   });
