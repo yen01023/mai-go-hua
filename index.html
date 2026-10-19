@@ -102,7 +102,10 @@ label { font-size: 17px; }
 .time-label { font-size: 17px; }
 .caption { text-align: center; font-size: 21px; line-height: 1.5; text-wrap: balance; min-height: 3em; }
 
-.caption.tappable { cursor: pointer; }
+.caption.tappable {
+  cursor: pointer; padding: 16px 20px; background: #F7F0E0; border: 3px solid rgba(51,56,77,0.35);
+  border-radius: 24px 20px 26px 18px / 20px 26px 18px 24px;
+}
 .flower {
   position: fixed; width: 28px; height: 28px; margin: -14px 0 0 -14px; pointer-events: none; z-index: 6;
   animation: fall var(--dur, 2s) cubic-bezier(.4, .1, .8, .6) forwards;
@@ -149,6 +152,9 @@ label { font-size: 17px; }
   border-right: 3px solid currentColor; border-bottom: 3px solid currentColor; transform: rotate(45deg);
 }
 .story[open] summary::after { transform: rotate(225deg); vertical-align: -1px; }
+.story-done { padding: 28px 10px 0; text-align: center; }
+.story-done p { margin: 0; font-size: 16px; line-height: 1.7; text-wrap: pretty; }
+.story-done a { color: var(--ink); text-decoration: underline dashed; text-underline-offset: 4px; }
 .story p { margin: 10px 0 0; font-size: 16px; line-height: 1.7; text-wrap: pretty; }
 .story a { color: var(--ink); text-decoration: underline dashed; text-underline-offset: 4px; }
 .done-art { width: 100%; max-width: 240px; align-self: center; height: auto; }
@@ -313,6 +319,9 @@ body { margin: 0; }
     <p>（我們做得到！）</p>
     <p><a href="https://forms.gle/3hCoJfqPB8N6QXcm7" target="_blank" rel="noopener">點這裡</a>提供回饋，幫助小滑繼續精進，下次用 2.0 版本回來找你。</p>
   </details>
+  <div class="story-done" id="storyDone" hidden>
+    <p><a href="https://forms.gle/3hCoJfqPB8N6QXcm7" target="_blank" rel="noopener">點這裡</a>提供回饋，幫助小滑繼續精進，下次用 2.0 版本回來找你。</p>
+  </div>
 
   <svg class="bottom-art" viewBox="0 0 390 146" aria-hidden="true" focusable="false">
     <g filter="url(#crayon)" stroke-linecap="round" stroke-linejoin="round">
@@ -380,9 +389,9 @@ body { margin: 0; }
   function clock(ts) { var d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
   function show(name) {
     ['setup', 'timer', 'done'].forEach(function (n) { $('screen-' + n).hidden = (n !== name); });
-    $('story').hidden = (name === 'timer');
-    if (name === 'done') $('story').open = true;
-    else if (name === 'setup') $('story').open = false;
+    $('story').hidden = (name !== 'setup');
+    $('storyDone').hidden = (name !== 'done');
+    if (name === 'setup') $('story').open = false;
     window.scrollTo(0, 0);
   }
 
