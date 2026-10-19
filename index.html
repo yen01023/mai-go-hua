@@ -102,10 +102,10 @@ label { font-size: 17px; }
 .time-label { font-size: 17px; }
 .caption { text-align: center; font-size: 21px; line-height: 1.5; text-wrap: balance; min-height: 3em; }
 
-.caption.tappable {
-  cursor: pointer; padding: 16px 20px; background: #F7F0E0; border: 3px solid rgba(51,56,77,0.35);
-  border-radius: 24px 20px 26px 18px / 20px 26px 18px 24px;
-}
+.caption.tappable { cursor: pointer; }
+.caption.tappable::before, .caption.tappable::after { color: #A5603C; font-size: 1.5em; line-height: 0; vertical-align: -0.12em; }
+.caption.tappable::before { content: '\201C'; margin-right: 4px; }
+.caption.tappable::after { content: '\201D'; margin-left: 4px; }
 .flower {
   position: fixed; width: 28px; height: 28px; margin: -14px 0 0 -14px; pointer-events: none; z-index: 6;
   animation: fall var(--dur, 2s) cubic-bezier(.4, .1, .8, .6) forwards;
