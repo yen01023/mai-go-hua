@@ -91,6 +91,7 @@ label { font-size: 17px; }
   border-radius: 26px 22px 28px 20px / 22px 28px 20px 26px;
 }
 .btn-ghost.primary { background: var(--peach); height: 62px; font-size: 20px; }
+.sound-note { text-align: center; font-size: 13px; opacity: .6; margin-top: -6px; }
 .hint { display: flex; flex-direction: column; gap: 4px; font-size: 15px; text-align: center; }
 
 .pills { display: flex; gap: 8px; justify-content: center; padding-top: 28px; }
@@ -296,6 +297,8 @@ body { margin: 0; }
       </div>
     </div>
 
+    <div class="sound-note">時間到會有提示音</div>
+
     <div class="caption" id="caption" aria-live="polite"></div>
 
     <div class="card" id="taskCard">
@@ -377,7 +380,7 @@ body { margin: 0; }
   var PHASES = {
     scroll:   { sec: 5 * UNIT, label: '放縱時間', cap: '盡情滑吧！\n時間到，我們再開始。', skip: '我滑夠了，提前進入下一步', next: 'tidy',
                 waitCap: '回來了。\n接下來整理桌面 3 分鐘。', waitBtn: '開始整理桌面' },
-    tidy:     { sec: 3 * UNIT, label: '整理桌面', cap: '收好雜物、喝口水，\n把需要的東西拿出來。', skip: '整理好了，提前進入下一步', next: 'meditate' },
+    tidy:     { sec: 3 * UNIT, label: '整理桌面', cap: '收好雜物、喝口水、上個廁所，\n找好音樂，把需要的東西拿出來。', skip: '整理好了，提前進入下一步', next: 'meditate' },
     meditate: { sec: 1 * UNIT, label: '冥想',     cap: '閉上眼睛，\n慢慢吸氣，慢慢吐氣。', skip: '我準備好了，開始專注', next: 'focus' },
     focus:    { sec: 0,        label: '專注中',   cap: '這段時間，\n只做這一件事。', skip: '結束這次專注', next: 'done' }
   };
