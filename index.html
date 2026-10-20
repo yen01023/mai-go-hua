@@ -78,7 +78,8 @@ label { font-size: 17px; }
   border: solid var(--ink); border-width: 3px 2px 4px 3px;
   border-radius: 14px 28px 14px 30px / 28px 14px 30px 16px; transform: rotate(-0.5deg); font-size: 18px;
 }
-.text-input::placeholder { color: rgba(51,56,77,0.5); }
+.ask-sub { font-size: 14px; opacity: .7; }
+.text-input::placeholder { color: rgba(51,56,77,0.5); font-size: 15px; }
 
 .btn {
   display: flex; align-items: center; justify-content: center; width: 100%; text-align: center;
@@ -269,8 +270,8 @@ body { margin: 0; }
     </div>
 
     <div class="field">
-      <label for="task">這段時間，要做什麼？</label>
-      <input id="task" class="text-input" type="text" maxlength="60" placeholder="例如：寫完這週的電子報" autocomplete="off">
+      <label for="task">這段時間，要做什麼？<span class="ask-sub">（你把任務拆解到「小到可笑」的地步了嗎？）</span></label>
+      <input id="task" class="text-input" type="text" maxlength="60" placeholder="例如：寫完這週電子報的第一段開頭" autocomplete="off">
     </div>
 
     <div style="display:flex;flex-direction:column;gap:12px">
@@ -745,6 +746,10 @@ body { margin: 0; }
       });
     });
   });
+  (function () {   // 輸入框是空的時候，範例輪流換
+    var ex = ['例如：寫完這週電子報的第一段開頭', '例如：讀完《拖延心理學》的目錄'], i = 0, el = $('task');
+    setInterval(function () { if (!el.value && document.activeElement !== el) { i = (i + 1) % ex.length; el.placeholder = ex[i]; } }, 3500);
+  })();
   $('startBtn').addEventListener('click', function () {
     unlockAudio();
     state.task = $('task').value.trim() || '專注的事';
