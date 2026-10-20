@@ -147,6 +147,13 @@ label { font-size: 17px; }
 }
 .alarm-btn[aria-pressed="true"] { background: var(--sand); }
 
+.noise-btn {
+  align-self: center; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px;
+  background: var(--chip); border: 3px solid var(--ink); font-size: 15px; color: var(--ink);
+  border-radius: 22px 16px 24px 18px / 16px 24px 18px 22px; transform: rotate(-1deg);
+}
+.noise-btn[hidden] { display: none; }
+.noise-btn[aria-pressed="false"] { background: transparent; opacity: .75; }
 .pause-icon {
   width: 48px; height: 48px; margin-top: 8px; padding: 0; display: flex; align-items: center; justify-content: center;
   background: var(--chip); border: solid var(--ink); border-width: 3px 4px 3px 3px;
@@ -301,6 +308,11 @@ body { margin: 0; }
 
     <div class="caption" id="caption" aria-live="polite"></div>
 
+    <button type="button" class="noise-btn" id="noiseBtn" aria-pressed="true" hidden>
+      <svg viewBox="0 0 48 48" width="26" height="26" aria-hidden="true" focusable="false"><g filter="url(#crayonSm)" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="3.6"><path d="M7,19 C7,17 8,16 10,16 L15,16 L25,8 C27,7 28,8 28,10 L28.5,38 C28.5,40 27,41 25,40 L15,32 L10,32 C8,32 7,31 7,29 Z" stroke="#33384D"/><g id="noiseWaves" stroke="#7C93B5"><path d="M34,18 C37,22 37,27 34,31"/><path d="M39,13 C44,20 44,29 39,36"/></g><path id="noiseX" d="M33,18 L43,30 M43,18 L33,30" stroke="#C0795B" hidden/></g></svg>
+      <span id="noiseLabel">白噪音：開</span>
+    </button>
+
     <div class="card" id="taskCard">
       <div class="small" id="taskMeta">這次要做 · 25 分鐘</div>
       <div class="big" id="taskText"></div>
@@ -435,6 +447,34 @@ body { margin: 0; }
       if (state.ctx.state === 'suspended') state.ctx.resume();
     } catch (e) {}
   }
+  /* ---- 白噪音（專注時播放，可靜音） ---- */
+  var noise = { src: null, gain: null, filt: null, stopT: 0 };
+  try { state.noiseOn = localStorage.getItem('mgh-noise') !== 'off'; } catch (e) { state.noiseOn = true; }
+  function startNoise() {
+    var c = state.ctx;
+    if (!c || noise.src) { if (noise.gain && c) noise.gain.gain.setTargetAtTime(0.14, c.currentTime, 0.4); return; }
+    try {
+      var len = c.sampleRate * 2, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
+      for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      var src = c.createBufferSource(); src.buffer = buf; src.loop = true;
+      var f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
+      var g = c.createGain(); g.gain.value = 0;
+      src.connect(f); f.connect(g); g.connect(c.destination);
+      src.start();
+      g.gain.setTargetAtTime(0.14, c.currentTime, 0.4);
+      noise.src = src; noise.gain = g; noise.filt = f;
+    } catch (e) {}
+  }
+  function stopNoise() {
+    var c = state.ctx, src = noise.src, g = noise.gain;
+    if (!src) return;
+    noise.src = null; noise.gain = null;
+    try { g.gain.setTargetAtTime(0, c.currentTime, 0.12); src.stop(c.currentTime + 0.6); } catch (e) {}
+  }
+  function syncNoise() {
+    var want = state.phase === 'focus' && !state.waiting && !state.paused && state.noiseOn;
+    if (want) startNoise(); else stopNoise();
+  }
   function beep(finalChime) {
     try {
       var c = state.ctx;
@@ -503,6 +543,12 @@ body { margin: 0; }
       if (i) $('caption').appendChild(document.createElement('br'));
       $('caption').appendChild(document.createTextNode(line));
     });
+    $('noiseBtn').hidden = !(state.phase === 'focus' && !waiting);
+    $('noiseBtn').setAttribute('aria-pressed', state.noiseOn ? 'true' : 'false');
+    $('noiseLabel').textContent = state.noiseOn ? '白噪音：開' : '白噪音：已靜音';
+    if (state.noiseOn) { $('noiseWaves').removeAttribute('hidden'); $('noiseX').setAttribute('hidden', ''); }
+    else { $('noiseWaves').setAttribute('hidden', ''); $('noiseX').removeAttribute('hidden'); }
+    syncNoise();
     $('actionBtn').textContent = waiting ? p.waitBtn : p.skip;
     $('actionBtn').classList.toggle('primary', waiting);
     $('alarmCard').hidden = !(state.phase === 'scroll' && !waiting);
@@ -542,6 +588,7 @@ body { margin: 0; }
   }
   function phaseEnded() {
     var p = PHASES[state.phase];
+    stopNoise();
     beep(state.phase === 'focus');
     if (state.phase === 'scroll') {
       // 使用者多半不在畫面上，等他回來按一下再繼續
@@ -561,6 +608,7 @@ body { margin: 0; }
     var start = state.focusStart || state.focusEnd;
     var mins = Math.max(1, Math.round((state.focusEnd - start) / (UNIT * 1000)));
     state.phase = 'done';
+    stopNoise();
     if (timerId) { clearInterval(timerId); timerId = null; }
     dropLock();
     document.title = BASE_TITLE;
@@ -570,6 +618,7 @@ body { margin: 0; }
     show('done');
   }
   function reset() {
+    stopNoise();
     state.phase = 'setup'; state.waiting = false; state.alarmSet = false;
     $('alarmBtn').setAttribute('aria-pressed', 'false');
     $('alarmBtn').textContent = '我設好了';
@@ -592,6 +641,12 @@ body { margin: 0; }
     go('scroll');
   });
   $('actionBtn').addEventListener('click', onAction);
+  $('noiseBtn').addEventListener('click', function () {
+    unlockAudio();
+    state.noiseOn = !state.noiseOn;
+    try { localStorage.setItem('mgh-noise', state.noiseOn ? 'on' : 'off'); } catch (e) {}
+    renderPhase();
+  });
   $('pauseBtn').addEventListener('click', function () {
     if (state.waiting || state.phase === 'scroll') return;
     if (state.paused) {
