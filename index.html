@@ -154,6 +154,14 @@ label { font-size: 17px; }
 }
 .noise-btn[hidden] { display: none; }
 .noise-btn[aria-pressed="false"] { background: transparent; opacity: .75; }
+.noise-kinds { display: flex; justify-content: center; gap: 8px; margin-top: -4px; }
+.noise-kinds[hidden] { display: none; }
+.nk {
+  min-height: 36px; padding: 0 14px; font-size: 14px; color: var(--ink); background: transparent;
+  border: 2.5px solid var(--ink); border-radius: 18px 14px 20px 15px / 14px 20px 15px 18px;
+}
+.nk[aria-checked="true"] { background: var(--sand); }
+.noise-kinds.off .nk { opacity: .5; }
 .pause-icon {
   width: 48px; height: 48px; margin-top: 8px; padding: 0; display: flex; align-items: center; justify-content: center;
   background: var(--chip); border: solid var(--ink); border-width: 3px 4px 3px 3px;
@@ -312,6 +320,11 @@ body { margin: 0; }
       <svg viewBox="0 0 48 48" width="26" height="26" aria-hidden="true" focusable="false"><g filter="url(#crayonSm)" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-width="3.6"><path d="M7,19 C7,17 8,16 10,16 L15,16 L25,8 C27,7 28,8 28,10 L28.5,38 C28.5,40 27,41 25,40 L15,32 L10,32 C8,32 7,31 7,29 Z" stroke="#33384D"/><g id="noiseWaves" stroke="#7C93B5"><path d="M34,18 C37,22 37,27 34,31"/><path d="M39,13 C44,20 44,29 39,36"/></g><path id="noiseX" d="M33,18 L43,30 M43,18 L33,30" stroke="#C0795B" hidden/></g></svg>
       <span id="noiseLabel">白噪音：開</span>
     </button>
+    <div class="noise-kinds" id="noiseKinds" role="radiogroup" aria-label="白噪音種類" hidden>
+      <button type="button" class="nk" data-k="ocean" role="radio">海邊</button>
+      <button type="button" class="nk" data-k="rain" role="radio">下雨</button>
+      <button type="button" class="nk" data-k="cafe" role="radio">咖啡店</button>
+    </div>
 
     <div class="card" id="taskCard">
       <div class="small" id="taskMeta">這次要做 · 25 分鐘</div>
@@ -447,32 +460,125 @@ body { margin: 0; }
       if (state.ctx.state === 'suspended') state.ctx.resume();
     } catch (e) {}
   }
-  /* ---- 白噪音（專注時播放，可靜音） ---- */
-  var noise = { src: null, gain: null, filt: null, stopT: 0 };
-  try { state.noiseOn = localStorage.getItem('mgh-noise') !== 'off'; } catch (e) { state.noiseOn = true; }
-  function startNoise() {
-    var c = state.ctx;
-    if (!c || noise.src) { if (noise.gain && c) noise.gain.gain.setTargetAtTime(0.14, c.currentTime, 0.4); return; }
-    try {
+  /* ---- 白噪音（專注時播放，可選三種、可靜音）：全部用 WebAudio 即時合成 ---- */
+  var KINDS = { ocean: '海邊', rain: '下雨', cafe: '咖啡店' };
+  var noise = { buf: null, master: null, nodes: [], timers: [], kind: '' };
+  try {
+    state.noiseOn = localStorage.getItem('mgh-noise') !== 'off';
+    state.noiseKind = localStorage.getItem('mgh-noise-kind');
+  } catch (e) { state.noiseOn = true; }
+  if (!KINDS[state.noiseKind]) state.noiseKind = 'ocean';
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function nSrc(c) {
+    if (!noise.buf || noise.buf.sampleRate !== c.sampleRate) {
       var len = c.sampleRate * 2, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
       for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-      var src = c.createBufferSource(); src.buffer = buf; src.loop = true;
-      var f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1400;
-      var g = c.createGain(); g.gain.value = 0;
-      src.connect(f); f.connect(g); g.connect(c.destination);
-      src.start();
-      g.gain.setTargetAtTime(0.14, c.currentTime, 0.4);
-      noise.src = src; noise.gain = g; noise.filt = f;
+      noise.buf = buf;
+    }
+    var s = c.createBufferSource(); s.buffer = noise.buf; s.loop = true;
+    s.start(0, Math.random() * 1.5);
+    noise.nodes.push(s);
+    return s;
+  }
+  function filt(c, type, f, q) { var b = c.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; }
+  function gainN(c, v) { var g = c.createGain(); g.gain.value = v; return g; }
+  function lfo(c, hz, depth, param) {
+    var o = c.createOscillator(); o.frequency.value = hz;
+    var g = gainN(c, depth); o.connect(g); g.connect(param); o.start(); noise.nodes.push(o);
+  }
+  function every(minMs, maxMs, fn) {
+    var t = { id: 0, dead: false };
+    (function next() {
+      t.id = setTimeout(function () { if (t.dead) return; try { fn(); } catch (e) {} next(); }, rnd(minMs, maxMs));
+    })();
+    noise.timers.push(t);
+  }
+  function ping(c, dest, f, vol, dur) {
+    var o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f;
+    var g = c.createGain(), t = c.currentTime;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
+  }
+  function gull(c, dest) {
+    var calls = 2 + Math.floor(Math.random() * 3), t0 = c.currentTime + 0.05, base = rnd(1500, 1900);
+    for (var i = 0; i < calls; i++) {
+      var t = t0 + i * rnd(0.42, 0.55), dur = rnd(0.28, 0.4);
+      var o = c.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(base * 0.9, t);
+      o.frequency.linearRampToValueAtTime(base * 1.45, t + dur * 0.35);
+      o.frequency.linearRampToValueAtTime(base * 0.85, t + dur);
+      var vib = c.createOscillator(); vib.frequency.value = 38;
+      var vg = gainN(c, 40); vib.connect(vg); vg.connect(o.frequency);
+      var bp = filt(c, 'bandpass', base * 1.2, 2.2);
+      var g = c.createGain();
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.5, t + 0.05);
+      g.gain.linearRampToValueAtTime(0.0001, t + dur);
+      o.connect(bp); bp.connect(g); g.connect(dest);
+      o.start(t); vib.start(t); o.stop(t + dur + 0.05); vib.stop(t + dur + 0.05);
+    }
+  }
+  function build(c, kind, m) {
+    var g, f;
+    if (kind === 'ocean') {
+      // 浪：低通的截止頻率與音量一起慢慢起伏（約 9 秒一個浪）
+      f = filt(c, 'lowpass', 650); g = gainN(c, 0.5);
+      nSrc(c).connect(f); f.connect(g); g.connect(m);
+      lfo(c, 0.11, 420, f.frequency); lfo(c, 0.11, 0.4, g.gain);
+      var f2 = filt(c, 'bandpass', 3200, 0.6), g2 = gainN(c, 0.12);
+      nSrc(c).connect(f2); f2.connect(g2); g2.connect(m); lfo(c, 0.11, 0.1, g2.gain);
+      var gd = gainN(c, 0.32); gd.connect(m);
+      every(14000, 38000, function () { gull(c, gd); });
+    } else if (kind === 'rain') {
+      f = filt(c, 'highpass', 500); var f3 = filt(c, 'lowpass', 7500); g = gainN(c, 0.55);
+      nSrc(c).connect(f); f.connect(f3); f3.connect(g); g.connect(m);
+      var fr = filt(c, 'lowpass', 380), gr = gainN(c, 0.3);
+      nSrc(c).connect(fr); fr.connect(gr); gr.connect(m);
+      var dd = gainN(c, 1); dd.connect(m);
+      every(70, 280, function () { ping(c, dd, rnd(2200, 5200), rnd(0.012, 0.04), 0.025); });
+    } else {
+      // 咖啡店：人聲嗡嗡 + 偶爾杯子碰撞
+      var b1 = filt(c, 'bandpass', 520, 0.7), g1 = gainN(c, 0.5);
+      nSrc(c).connect(b1); b1.connect(g1); g1.connect(m); lfo(c, 0.31, 0.22, g1.gain);
+      var b2 = filt(c, 'bandpass', 1150, 0.8), g22 = gainN(c, 0.32);
+      nSrc(c).connect(b2); b2.connect(g22); g22.connect(m); lfo(c, 0.17, 0.2, g22.gain);
+      var b3 = filt(c, 'lowpass', 260), g3 = gainN(c, 0.25);
+      nSrc(c).connect(b3); b3.connect(g3); g3.connect(m);
+      var cd = gainN(c, 1); cd.connect(m);
+      every(5000, 17000, function () {
+        var fq = rnd(2400, 4200), n = Math.random() < 0.4 ? 2 : 1;
+        for (var i = 0; i < n; i++) setTimeout(function () {
+          if (!noise.master) return;
+          ping(c, cd, fq, 0.05, 0.3); ping(c, cd, fq * 1.51, 0.03, 0.2);
+        }, i * rnd(90, 160));
+      });
+    }
+  }
+  var LEVEL = { ocean: 0.24, rain: 0.2, cafe: 0.34 };
+  function startNoise() {
+    var c = state.ctx;
+    if (!c || noise.master) return;
+    try {
+      var m = gainN(c, 0); m.connect(c.destination);
+      noise.master = m; noise.kind = state.noiseKind;
+      build(c, state.noiseKind, m);
+      m.gain.setTargetAtTime(LEVEL[state.noiseKind], c.currentTime, 0.5);
     } catch (e) {}
   }
   function stopNoise() {
-    var c = state.ctx, src = noise.src, g = noise.gain;
-    if (!src) return;
-    noise.src = null; noise.gain = null;
-    try { g.gain.setTargetAtTime(0, c.currentTime, 0.12); src.stop(c.currentTime + 0.6); } catch (e) {}
+    var c = state.ctx, m = noise.master, nodes = noise.nodes, timers = noise.timers;
+    if (!m) return;
+    noise.master = null; noise.nodes = []; noise.timers = [];
+    timers.forEach(function (t) { t.dead = true; clearTimeout(t.id); });
+    try { m.gain.setTargetAtTime(0, c.currentTime, 0.12); } catch (e) {}
+    setTimeout(function () {
+      nodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
+      try { m.disconnect(); } catch (e) {}
+    }, 800);
   }
   function syncNoise() {
     var want = state.phase === 'focus' && !state.waiting && !state.paused && state.noiseOn;
+    if (want && noise.master && noise.kind !== state.noiseKind) stopNoise();
     if (want) startNoise(); else stopNoise();
   }
   function beep(finalChime) {
@@ -548,6 +654,11 @@ body { margin: 0; }
     $('noiseLabel').textContent = state.noiseOn ? '白噪音：開' : '白噪音：已靜音';
     if (state.noiseOn) { $('noiseWaves').removeAttribute('hidden'); $('noiseX').setAttribute('hidden', ''); }
     else { $('noiseWaves').setAttribute('hidden', ''); $('noiseX').removeAttribute('hidden'); }
+    $('noiseKinds').hidden = $('noiseBtn').hidden;
+    $('noiseKinds').classList.toggle('off', !state.noiseOn);
+    Array.prototype.forEach.call(document.querySelectorAll('.nk'), function (b) {
+      b.setAttribute('aria-checked', b.getAttribute('data-k') === state.noiseKind ? 'true' : 'false');
+    });
     syncNoise();
     $('actionBtn').textContent = waiting ? p.waitBtn : p.skip;
     $('actionBtn').classList.toggle('primary', waiting);
@@ -641,6 +752,15 @@ body { margin: 0; }
     go('scroll');
   });
   $('actionBtn').addEventListener('click', onAction);
+  Array.prototype.forEach.call(document.querySelectorAll('.nk'), function (b) {
+    b.addEventListener('click', function () {
+      unlockAudio();
+      state.noiseKind = b.getAttribute('data-k');
+      state.noiseOn = true;
+      try { localStorage.setItem('mgh-noise-kind', state.noiseKind); localStorage.setItem('mgh-noise', 'on'); } catch (e) {}
+      renderPhase();
+    });
+  });
   $('noiseBtn').addEventListener('click', function () {
     unlockAudio();
     state.noiseOn = !state.noiseOn;
