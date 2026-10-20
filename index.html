@@ -462,46 +462,69 @@ body { margin: 0; }
   }
   /* ---- 白噪音（專注時播放，可選三種、可靜音）：全部用 WebAudio 即時合成 ---- */
   var KINDS = { ocean: '海邊', rain: '下雨', cafe: '咖啡店' };
-  var noise = { buf: null, master: null, nodes: [], timers: [], kind: '' };
+  var noise = { bufs: {}, rate: 0, master: null, nodes: [], scheds: [], tick: 0, kind: '', verb: null };
   try {
     state.noiseOn = localStorage.getItem('mgh-noise') !== 'off';
     state.noiseKind = localStorage.getItem('mgh-noise-kind');
   } catch (e) { state.noiseOn = true; }
   if (!KINDS[state.noiseKind]) state.noiseKind = 'ocean';
   function rnd(a, b) { return a + Math.random() * (b - a); }
-  function nSrc(c) {
-    if (!noise.buf || noise.buf.sampleRate !== c.sampleRate) {
-      var len = c.sampleRate * 2, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
-      for (var i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-      noise.buf = buf;
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  // 白 / 粉紅 / 棕色雜訊（粉紅和棕色比較低沉柔和，不會像「沙沙」的白噪音）
+  function noiseBuf(c, type) {
+    if (noise.rate !== c.sampleRate) { noise.bufs = {}; noise.rate = c.sampleRate; }
+    if (noise.bufs[type]) return noise.bufs[type];
+    var len = c.sampleRate * 4, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0), i;
+    if (type === 'white') { for (i = 0; i < len; i++) d[i] = Math.random() * 2 - 1; }
+    else if (type === 'pink') {
+      var b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (i = 0; i < len; i++) {
+        var w = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + w * 0.0555179; b1 = 0.99332 * b1 + w * 0.0750759; b2 = 0.969 * b2 + w * 0.153852;
+        b3 = 0.8665 * b3 + w * 0.3104856; b4 = 0.55 * b4 + w * 0.5329522; b5 = -0.7616 * b5 - w * 0.016898;
+        d[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.11; b6 = w * 0.115926;
+      }
+    } else {
+      var last = 0;
+      for (i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5; }
+      // 頭尾接縫淡入淡出，避免循環時有「啪」一聲
+      var f = Math.floor(c.sampleRate * 0.25);
+      for (i = 0; i < f; i++) { var k = i / f; d[i] *= k; d[len - 1 - i] *= k; }
     }
-    var s = c.createBufferSource(); s.buffer = noise.buf; s.loop = true;
-    s.start(0, Math.random() * 1.5);
+    noise.bufs[type] = buf;
+    return buf;
+  }
+  function nSrc(c, type) {
+    var s = c.createBufferSource(); s.buffer = noiseBuf(c, type || 'pink'); s.loop = true;
+    s.start(0, rnd(0, 2));
     noise.nodes.push(s);
     return s;
   }
   function filt(c, type, f, q) { var b = c.createBiquadFilter(); b.type = type; b.frequency.value = f; if (q) b.Q.value = q; return b; }
   function gainN(c, v) { var g = c.createGain(); g.gain.value = v; return g; }
+  function panN(c, dest) {
+    if (!c.createStereoPanner) return dest;
+    var p = c.createStereoPanner(); p.pan.value = rnd(-0.8, 0.8); p.connect(dest); return p;
+  }
   function lfo(c, hz, depth, param) {
     var o = c.createOscillator(); o.frequency.value = hz;
     var g = gainN(c, depth); o.connect(g); g.connect(param); o.start(); noise.nodes.push(o);
   }
-  function every(minMs, maxMs, fn) {
-    var t = { id: 0, dead: false };
-    (function next() {
-      t.id = setTimeout(function () { if (t.dead) return; try { fn(); } catch (e) {} next(); }, rnd(minMs, maxMs));
-    })();
-    noise.timers.push(t);
+  // 以「音訊時間」往前排程，切到背景分頁也不會斷斷續續
+  function sched(fn) { noise.scheds.push(fn); }
+  function every(minMs, maxMs, fn) {   // 稀疏事件（海鷗、杯子聲）
+    var c = state.ctx, next = c.currentTime + rnd(minMs, maxMs) / 1000;
+    sched(function (until) { while (next < until) { fn(next); next += rnd(minMs, maxMs) / 1000; } });
   }
-  function ping(c, dest, f, vol, dur) {
+  function ping(c, dest, t, f, vol, dur) {
     var o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f;
-    var g = c.createGain(), t = c.currentTime;
+    var g = c.createGain();
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(dest); o.start(t); o.stop(t + dur + 0.05);
   }
-  function gull(c, dest) {
-    var calls = 2 + Math.floor(Math.random() * 3), t0 = c.currentTime + 0.05, base = rnd(1500, 1900);
+  function gull(c, t0, dest) {
+    var calls = 2 + Math.floor(Math.random() * 3), base = rnd(1500, 1900);
     for (var i = 0; i < calls; i++) {
       var t = t0 + i * rnd(0.42, 0.55), dur = rnd(0.28, 0.4);
       var o = c.createOscillator(); o.type = 'sawtooth';
@@ -518,43 +541,122 @@ body { margin: 0; }
       o.start(t); vib.start(t); o.stop(t + dur + 0.05); vib.stop(t + dur + 0.05);
     }
   }
+  // 一顆雨滴打在不同表面上：屋頂（尖脆、帶一點叮）、地板（扎實）、草地（悶軟）
+  function drop(c, t, surf, dest) {
+    var s = c.createBufferSource(); s.buffer = noiseBuf(c, 'white');
+    var bp, vol, dur;
+    if (surf === 0) { bp = filt(c, 'bandpass', rnd(3500, 7500), 3); vol = rnd(0.05, 0.16); dur = rnd(0.012, 0.03); }
+    else if (surf === 1) { bp = filt(c, 'bandpass', rnd(1100, 2600), 1.6); vol = rnd(0.08, 0.22); dur = rnd(0.03, 0.06); }
+    else { bp = filt(c, 'bandpass', rnd(700, 1800), 0.7); vol = rnd(0.03, 0.09); dur = rnd(0.02, 0.045); }
+    var g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(bp); bp.connect(g); g.connect(panN(c, dest));
+    s.start(t, rnd(0, 3)); s.stop(t + dur + 0.02);
+    if (surf === 0 && Math.random() < 0.3) ping(c, panN(c, dest), t, rnd(1800, 3400), 0.025, 0.06);
+  }
+  function impulse(c, sec) {
+    var len = Math.floor(c.sampleRate * sec), buf = c.createBuffer(2, len, c.sampleRate);
+    for (var ch = 0; ch < 2; ch++) {
+      var d = buf.getChannelData(ch);
+      for (var i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.5);
+    }
+    return buf;
+  }
+  // 一個聽不出內容的說話者：鋸齒波（聲帶）通過會變動的共振峰，以音節節奏開合
+  function talker(c, bus) {
+    var female = Math.random() < 0.5;
+    var f0 = female ? rnd(170, 250) : rnd(85, 135);
+    var o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f0;
+    var f1 = filt(c, 'bandpass', 500, 5), f2 = filt(c, 'bandpass', 1500, 6), f3 = filt(c, 'bandpass', 2700, 6);
+    var mix = gainN(c, 0), env = gainN(c, 0);
+    o.connect(f1); o.connect(f2); o.connect(f3);
+    f1.connect(env); f2.connect(env); f3.connect(env); env.connect(panN(c, bus));
+    o.start(); noise.nodes.push(o);
+    var next = c.currentTime + rnd(0, 1.5), loud = rnd(0.5, 1);
+    sched(function (until) {
+      while (next < until) {
+        var t = next, len = rnd(0.09, 0.22);
+        if (Math.random() < 0.16) { next += rnd(0.3, 1.5); env.gain.setTargetAtTime(0, t, 0.04); continue; }
+        if (Math.random() < 0.025) { next += rnd(2, 6); env.gain.setTargetAtTime(0, t, 0.04); continue; }
+        o.frequency.setTargetAtTime(f0 * rnd(0.88, 1.15), t, 0.03);
+        f1.frequency.setTargetAtTime(rnd(330, 850), t, 0.025);
+        f2.frequency.setTargetAtTime(rnd(900, 2300), t, 0.025);
+        f3.frequency.setTargetAtTime(rnd(2400, 3100), t, 0.025);
+        env.gain.setTargetAtTime(rnd(0.05, 0.12) * loud, t, 0.02);
+        env.gain.setTargetAtTime(0.005, t + len * 0.72, 0.03);
+        next += len + rnd(0.02, 0.09);
+      }
+    });
+  }
   function build(c, kind, m) {
-    var g, f;
+    var f, g;
     if (kind === 'ocean') {
-      // 浪：低通的截止頻率與音量一起慢慢起伏（約 9 秒一個浪）
-      f = filt(c, 'lowpass', 650); g = gainN(c, 0.5);
-      nSrc(c).connect(f); f.connect(g); g.connect(m);
-      lfo(c, 0.11, 420, f.frequency); lfo(c, 0.11, 0.4, g.gain);
-      var f2 = filt(c, 'bandpass', 3200, 0.6), g2 = gainN(c, 0.12);
-      nSrc(c).connect(f2); f2.connect(g2); g2.connect(m); lfo(c, 0.11, 0.1, g2.gain);
+      // 深沉的底層轟鳴
+      f = filt(c, 'lowpass', 260); g = gainN(c, 0.5);
+      nSrc(c, 'brown').connect(f); f.connect(g); g.connect(m); lfo(c, 0.06, 0.12, g.gain);
+      // 一個一個真的「浪」：慢慢湧上來 → 浪頭翻滾 → 退去的嘶嘶聲，每道浪長短不一
+      var lp = filt(c, 'lowpass', 300, 0.7), gw = gainN(c, 0.05);
+      nSrc(c, 'pink').connect(lp); lp.connect(gw); gw.connect(m);
+      var hp = filt(c, 'highpass', 1500), bp = filt(c, 'bandpass', 3400, 0.5), gf = gainN(c, 0);
+      nSrc(c, 'pink').connect(hp); hp.connect(bp); bp.connect(gf); gf.connect(m);
+      var wt = c.currentTime + 0.1;
+      sched(function (until) {
+        while (wt < until) {
+          var D = rnd(7, 12), big = rnd(0.55, 1), peak = wt + D * 0.42, end = wt + D;
+          lp.frequency.setValueAtTime(260, wt);
+          lp.frequency.exponentialRampToValueAtTime(900 + 1300 * big, peak);
+          lp.frequency.exponentialRampToValueAtTime(260, end);
+          gw.gain.setValueAtTime(0.05, wt);
+          gw.gain.exponentialRampToValueAtTime(0.9 * big, peak);
+          gw.gain.exponentialRampToValueAtTime(0.05, end);
+          gf.gain.setValueAtTime(0.0001, wt + D * 0.3);
+          gf.gain.exponentialRampToValueAtTime(0.5 * big, peak + 0.3);
+          gf.gain.exponentialRampToValueAtTime(0.0001, end - D * 0.05);
+          wt = end + rnd(-0.5, 0.8);
+        }
+      });
       var gd = gainN(c, 0.32); gd.connect(m);
-      every(14000, 38000, function () { gull(c, gd); });
+      every(14000, 38000, function (t) { gull(c, t, gd); });
     } else if (kind === 'rain') {
-      f = filt(c, 'highpass', 500); var f3 = filt(c, 'lowpass', 7500); g = gainN(c, 0.55);
-      nSrc(c).connect(f); f.connect(f3); f3.connect(g); g.connect(m);
-      var fr = filt(c, 'lowpass', 380), gr = gainN(c, 0.3);
-      nSrc(c).connect(fr); fr.connect(gr); gr.connect(m);
+      // 很輕的底層雨幕 + 一顆一顆打在屋頂、地板、草地上的雨滴
+      f = filt(c, 'highpass', 300); var f3 = filt(c, 'lowpass', 4500); g = gainN(c, 0.2);
+      nSrc(c, 'pink').connect(f); f.connect(f3); f3.connect(g); g.connect(m);
       var dd = gainN(c, 1); dd.connect(m);
-      every(70, 280, function () { ping(c, dd, rnd(2200, 5200), rnd(0.012, 0.04), 0.025); });
+      var dt = c.currentTime + 0.1;
+      sched(function (until) {
+        while (dt < until) {
+          var r = Math.random();
+          drop(c, dt, r < 0.38 ? 0 : (r < 0.72 ? 1 : 2), dd);
+          dt += rnd(0.02, 0.085);
+        }
+      });
+      // 偶爾一滴「滴」進水窪
+      every(1500, 4500, function (t) {
+        var o = c.createOscillator(), gg = c.createGain();
+        o.frequency.setValueAtTime(rnd(420, 560), t); o.frequency.exponentialRampToValueAtTime(rnd(900, 1300), t + 0.07);
+        gg.gain.setValueAtTime(0.0001, t); gg.gain.exponentialRampToValueAtTime(0.07, t + 0.006);
+        gg.gain.exponentialRampToValueAtTime(0.0001, t + 0.11);
+        o.connect(gg); gg.connect(panN(c, dd)); o.start(t); o.stop(t + 0.15);
+      });
     } else {
-      // 咖啡店：人聲嗡嗡 + 偶爾杯子碰撞
-      var b1 = filt(c, 'bandpass', 520, 0.7), g1 = gainN(c, 0.5);
-      nSrc(c).connect(b1); b1.connect(g1); g1.connect(m); lfo(c, 0.31, 0.22, g1.gain);
-      var b2 = filt(c, 'bandpass', 1150, 0.8), g22 = gainN(c, 0.32);
-      nSrc(c).connect(b2); b2.connect(g22); g22.connect(m); lfo(c, 0.17, 0.2, g22.gain);
-      var b3 = filt(c, 'lowpass', 260), g3 = gainN(c, 0.25);
-      nSrc(c).connect(b3); b3.connect(g3); g3.connect(m);
-      var cd = gainN(c, 1); cd.connect(m);
-      every(5000, 17000, function () {
+      // 咖啡店：很多人同時在說話，但聽不出內容；加上空間迴響、杯碟聲
+      var bus = gainN(c, 1), lpv = filt(c, 'lowpass', 4200), dry = gainN(c, 0.65), wet = gainN(c, 0.55);
+      var cv = c.createConvolver(); cv.buffer = impulse(c, 1.6);
+      bus.connect(lpv); lpv.connect(dry); dry.connect(m); lpv.connect(cv); cv.connect(wet); wet.connect(m);
+      for (var i = 0; i < 10; i++) talker(c, bus);
+      var fb = filt(c, 'lowpass', 1400), gb = gainN(c, 0.1);
+      nSrc(c, 'pink').connect(fb); fb.connect(gb); gb.connect(m);
+      var cd = gainN(c, 1); cd.connect(m); cd.connect(cv);
+      every(4000, 14000, function (t) {
         var fq = rnd(2400, 4200), n = Math.random() < 0.4 ? 2 : 1;
-        for (var i = 0; i < n; i++) setTimeout(function () {
-          if (!noise.master) return;
-          ping(c, cd, fq, 0.05, 0.3); ping(c, cd, fq * 1.51, 0.03, 0.2);
-        }, i * rnd(90, 160));
+        for (var k = 0; k < n; k++) {
+          ping(c, cd, t + k * rnd(0.09, 0.16), fq, 0.05, 0.3); ping(c, cd, t + k * 0.12, fq * 1.51, 0.03, 0.2);
+        }
       });
     }
   }
-  var LEVEL = { ocean: 0.24, rain: 0.2, cafe: 0.34 };
+  var LEVEL = { ocean: 0.3, rain: 1.3, cafe: 2.1 };
   function startNoise() {
     var c = state.ctx;
     if (!c || noise.master) return;
@@ -562,14 +664,19 @@ body { margin: 0; }
       var m = gainN(c, 0); m.connect(c.destination);
       noise.master = m; noise.kind = state.noiseKind;
       build(c, state.noiseKind, m);
+      noise.tick = setInterval(function () {
+        var until = c.currentTime + 1.2;
+        noise.scheds.forEach(function (fn) { try { fn(until); } catch (e) { if (window.console) console.error(e); } });
+      }, 300);
+      noise.scheds.forEach(function (fn) { fn(c.currentTime + 1.2); });
       m.gain.setTargetAtTime(LEVEL[state.noiseKind], c.currentTime, 0.5);
-    } catch (e) {}
+    } catch (e) { if (window.console) console.error(e); }
   }
   function stopNoise() {
-    var c = state.ctx, m = noise.master, nodes = noise.nodes, timers = noise.timers;
+    var c = state.ctx, m = noise.master, nodes = noise.nodes;
     if (!m) return;
-    noise.master = null; noise.nodes = []; noise.timers = [];
-    timers.forEach(function (t) { t.dead = true; clearTimeout(t.id); });
+    noise.master = null; noise.nodes = []; noise.scheds = [];
+    clearInterval(noise.tick);
     try { m.gain.setTargetAtTime(0, c.currentTime, 0.12); } catch (e) {}
     setTimeout(function () {
       nodes.forEach(function (n) { try { n.stop(); } catch (e) {} });
