@@ -747,12 +747,7 @@ body { margin: 0; }
     });
   });
   (function () {   // 輸入框是空的時候，範例輪流換
-    var ex = ['例如：寫完這週電子報的第一段開頭', '例如：讀完《拖延心理學》的目錄'], i = 0, el = $('task');
-    var more = ['例如：打開簡報檔，寫下第一頁的標題', '例如：回完那封拖了三天的信的第一句', '例如：把報告的三個小標題列出來',
-      '例如：把運動鞋拿出來，穿上', '例如：洗好今天用過的那一個碗', '例如：打開論文檔案，把標題改好',
-      '例如：寫下企劃書的第一句話', '例如：把待辦清單第一項的第一步寫下來'];
-    more.sort(function () { return Math.random() - 0.5; });
-    ex = ex.concat(more);
+    var ex = ['例如：寫完這週電子報的第一段開頭', '例如：讀完《拖延心理學》的目錄頁', '例如：列出論文的架構標題', '例如：挑一件堆在椅子上的衣服來摺'], i = 0, el = $('task');
     setInterval(function () { if (!el.value && document.activeElement !== el) { i = (i + 1) % ex.length; el.placeholder = ex[i]; } }, 3500);
   })();
   $('startBtn').addEventListener('click', function () {
